@@ -1,2 +1,4 @@
 Table of Contents
 Place filename followed by one-liner description here.
+
+interval_merge.m Merge real number intervals from endpoint data.
