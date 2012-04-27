@@ -1,1 +1,3 @@
 Store source code that applies to sequencing data here.
+
+pileup2dc - SAM pileup to depth chart converter. Doesn't quite work yet.
