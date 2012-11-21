@@ -2,26 +2,75 @@
 
 # summarize_cov.py
 # Uses bedtools cov.out file (provided on command line), and summarizes coverage depth in ranges
-#
-# Note: could generalize this more if needed, by providing depth range values (DEPTH_COLS) as parameter
+# 
+# Coverage depth ranges default to: 1,10,30,100 or can be provided as option (eg. -c 1,10,25,50,99)
 #
 # Created by Sue Grimes on 11/01/12.
 # Copyright (c) 2012 Ji Research Group - Stanford Genome Technology Center. All rights reserved.
 
 import sys, os, csv, re
+from optparse import OptionParser
 script_name = os.path.basename(__file__)
 
-# Ensure that valid input file is provided as command line argument
-if len(sys.argv) < 2:
-  print "Usage: ", script_name, " <cov.out file>"
-  sys.exit(1)
+# Derive column headings for output file
+def header_cols():
+  depth_hdr_cols = []
+  for i, dcol in enumerate(DEPTH_COLS):
+    if dcol == 1:
+      depth_hdr_cols.append('0s')
+    else:
+      depth_hdr_cols.append('< ' + str(dcol))
+    if i == IDX_DEPTH_MAX-1:
+      depth_hdr_cols.append(str(dcol) + '+')
+  return ["Chr", "Loc Beg", "Loc End"] + depth_hdr_cols + ["Total Bases"] + depth_hdr_cols + ["Ave Cov"] 
+
+def cov_range_callback(option, opt, value, parser):
+  cov_array = [int(r_val) for r_val in value.split(',')]
+  setattr(parser.values, option.dest, cov_array)
+
+# Determine which range the specified depth is within, and return index to totals array accordingly
+def categorize_depth(depth):
+  for i, dcol in enumerate(DEPTH_COLS):
+    if depth < dcol:
+      return i
+
+  return IDX_DEPTH_MAX
+
+# Calculate proportion of bases covered at each depth range, and overall average coverage
+def calc_averages(cov_totals, sum_depth):
+  cov_averages = [0] * NR_COLS
   
-elif sys.argv[1][-7:] != 'cov.out':
-  print ("File extension must be .cov.out")
+  for i in range(IDX_DEPTH_MAX+1):
+    cov_averages[i] = round_num((float(cov_totals[i]) / cov_totals[IDX_DEPTH_TOT]), 3)
+  
+  cov_averages[IDX_DEPTH_TOT] = round_num((float(sum_depth) / cov_totals[IDX_DEPTH_TOT]), 1)
+  return cov_averages
+
+# Rounding method 
+def round_num(nr, precision=3):
+  return "{0:.{1}f}".format(nr, precision)
+ 
+# MAIN PROGRAM #
+# Define and read command line options and arguments
+usage = "usage: %prog <cov.out file>"
+parser = OptionParser(usage)
+
+parser.add_option("-c", "--covrange", dest="cov_range", type="string", default=[1,10,30,100],
+                  action="callback", callback=cov_range_callback, help="Comma separated list for coverage range.  Default: 1,10,30,100")
+(options, args) = parser.parse_args()
+
+# Ensure that valid input file is provided as command line argument
+if len(args) != 1:
+  print "Incorrect number of arguments"
+  parser.print_help()
+  sys.exit(1)
+
+elif args[0][-7:] != 'cov.out':
+  print "File extension must be .cov.out"
   sys.exit(1)
 
 try:
-  in_file = sys.argv[1]
+  in_file = args[0]
   cov_in = open(in_file, 'r')
 except:
   print "Unable to open input file", in_file
@@ -47,7 +96,8 @@ except:
 # IDX_DEPTH_TOT = 5 (index to cov_totals array value storing total coverage)
 # NR_COLS       = 6 (total number of output columns for depths)
 #
-DEPTH_COLS = [1,10,30,100]
+print "Coverage ranges: ", options.cov_range
+DEPTH_COLS = options.cov_range
 IDX_DEPTH_MAX = len(DEPTH_COLS)
 IDX_DEPTH_TOT = len(DEPTH_COLS)+1
 NR_COLS = len(DEPTH_COLS)+2
@@ -63,41 +113,7 @@ cov_averages = [0] * NR_COLS
 grand_tots = [0] * NR_COLS
 sum_depth = 0
 
-# Derive column headings for output file
-def header_cols():
-  depth_hdr_cols = []
-  for i, dcol in enumerate(DEPTH_COLS):
-    if dcol == 1:
-      depth_hdr_cols.append('0s')
-    else:
-      depth_hdr_cols.append('< ' + str(dcol))
-    if i == IDX_DEPTH_MAX-1:
-      depth_hdr_cols.append(str(dcol) + '+')
-  return ["Chr", "Loc Beg", "Loc End"] + depth_hdr_cols + ["Total Bases"] + depth_hdr_cols + ["Ave Cov"]  
-
-# Determine which range the specified depth is within, and return index to totals array accordingly
-def categorize_depth(depth):
-  for i, dcol in enumerate(DEPTH_COLS):
-    if depth < dcol:
-      return i
-
-  return IDX_DEPTH_MAX
-
-# Calculate proportion of bases covered at each depth range, and overall average coverage
-def calc_averages(cov_totals, sum_depth):
-  cov_averages = [0] * NR_COLS
-  
-  for i in range(IDX_DEPTH_MAX+1):
-    cov_averages[i] = round_num((float(cov_totals[i]) / cov_totals[IDX_DEPTH_TOT]), 3)
-  
-  cov_averages[IDX_DEPTH_TOT] = round_num((float(sum_depth) / cov_totals[IDX_DEPTH_TOT]), 1)
-  return cov_averages
-
-# Rounding method 
-def round_num(nr, precision=3):
-  return "{0:.{1}f}".format(nr, precision)
- 
-# MAIN PROGRAM #
+# Start main loop
 ln = 0
 for cov_line in cov_in:
   cov_cols = cov_line.rstrip("\n").split("\t")
